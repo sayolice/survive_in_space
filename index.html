@@ -1,0 +1,1147 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>생존 게임 - 미사일 피하기</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        #gameContainer {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #gameCanvas {
+            border: 3px solid #00ffff;
+            border-radius: 10px;
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.5);
+            background: radial-gradient(circle at center, #1a1a2e, #0a0a1a);
+        }
+
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 10;
+            color: #00ffff;
+            font-size: 20px;
+            font-weight: bold;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.8);
+        }
+
+        #ui > div {
+            margin-bottom: 10px;
+        }
+        
+        #missileInfo {
+            margin-top: 15px;
+            font-size: 14px;
+            color: #ffff00;
+        }
+        
+        #weaponStatus {
+            position: absolute;
+            bottom: 30px;
+            left: 20px;
+            z-index: 10;
+            color: #ffff00;
+            font-size: 20px;
+            font-weight: bold;
+            text-shadow: 0 0 10px rgba(255, 255, 0, 0.8);
+            display: none;
+        }
+
+        #instructions, #gameOver {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.95);
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            color: #00ffff;
+            border: 2px solid #00ffff;
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.5);
+            max-width: 500px;
+        }
+
+        #instructions h1 {
+            margin-bottom: 20px;
+            color: #ff00ff;
+            font-size: 36px;
+            text-shadow: 0 0 20px #ff00ff;
+        }
+
+        #instructions p {
+            margin: 15px 0;
+            font-size: 18px;
+            line-height: 1.6;
+        }
+
+        #instructions .controls-info {
+            margin-top: 30px;
+            padding: 20px;
+            background: rgba(0, 255, 255, 0.1);
+            border-radius: 10px;
+        }
+
+        #instructions .controls-info strong {
+            color: #ffff00;
+        }
+
+        #startBtn, #restartBtn {
+            margin-top: 20px;
+            padding: 15px 40px;
+            font-size: 20px;
+            background: linear-gradient(135deg, #ff00ff, #00ffff);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        #startBtn:hover, #restartBtn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.8);
+        }
+
+        #gameOver {
+            display: none;
+        }
+
+        #gameOver h2 {
+            color: #ff0000;
+            margin-bottom: 20px;
+            font-size: 40px;
+            text-shadow: 0 0 20px #ff0000;
+        }
+
+        .powerup-indicator {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: #ffff00;
+            font-weight: bold;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px 20px;
+            border-radius: 10px;
+            border: 2px solid #ffff00;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+        <div id="ui">
+            <div>생존 시간: <span id="survivalTime">0</span>초</div>
+            <div>최고 기록: <span id="highScore">0</span>초</div>
+            <div>미사일 수: <span id="missileCount">0</span></div>
+            <div id="missileInfo">
+                🔴 유도탄: 플레이어를 추적<br>
+                🟢 직선탄: 정면으로 직진
+            </div>
+        </div>
+
+        <div class="powerup-indicator" id="powerupIndicator">
+            ⚡ 슬로우 모션 발동!
+        </div>
+        
+        <div id="weaponStatus">
+            🚀 무기 획득! 유도탄 자동 격추 중...
+        </div>
+        
+        <div id="instructions">
+            <h1>🎮 생존 게임</h1>
+            <p>🚀 사방에서 날아오는 미사일을 피하세요!</p>
+            <p>💀 한 번이라도 맞으면 게임 오버입니다</p>
+            <div class="controls-info">
+                <p><strong>미사일 종류:</strong></p>
+                <p>🔴 <span style="color: #ff6b6b;">유도탄</span> - 플레이어를 추적합니다</p>
+                <p>🟢 <span style="color: #51cf66;">직선탄</span> - 정면으로 직진합니다</p>
+                <p style="margin-top: 15px;"><strong>특수 기능:</strong></p>
+                <p>🔫 무기를 획득하면 미사일을 자동 격추합니다!</p>
+                <p>🚀 <span style="color: #ff0080;">우주선</span>이 나타나면 사방으로 레이저를 발사합니다!</p>
+                <p style="color: #ff4444; font-size: 14px;">⚠️ 레이저에 닿으면 즉시 사망합니다!</p>
+                <p style="margin-top: 15px;"><strong>조작 방법:</strong></p>
+                <p>⌨️ WASD 또는 방향키로 이동</p>
+                <p>🖱️ 마우스로 이동 (마우스 버튼 꾹 누르기)</p>
+            </div>
+            <button id="startBtn">게임 시작</button>
+        </div>
+
+        <div id="gameOver">
+            <h2>💀 게임 오버</h2>
+            <p style="font-size: 24px; color: #ffff00; margin: 20px 0;">
+                생존 시간: <span id="finalTime">0</span>초
+            </p>
+            <button id="restartBtn">다시 시작</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const survivalTimeElement = document.getElementById('survivalTime');
+        const highScoreElement = document.getElementById('highScore');
+        const missileCountElement = document.getElementById('missileCount');
+        const powerupIndicator = document.getElementById('powerupIndicator');
+        const startBtn = document.getElementById('startBtn');
+        const restartBtn = document.getElementById('restartBtn');
+        const instructionsDiv = document.getElementById('instructions');
+        const gameOverDiv = document.getElementById('gameOver');
+        const finalTimeElement = document.getElementById('finalTime');
+
+        // Canvas 크기 설정
+        const gameSize = Math.min(window.innerWidth - 100, window.innerHeight - 200, 800);
+        canvas.width = gameSize;
+        canvas.height = gameSize;
+
+        // 게임 변수
+        let gameState = 'menu';
+        let survivalTime = 0;
+        let highScore = localStorage.getItem('survivalHighScore') || 0;
+        highScoreElement.textContent = highScore;
+
+        // 플레이어 설정
+        const player = {
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            radius: 15,
+            speed: 5,
+            color: '#00ffff'
+        };
+
+        // 미사일 배열
+        let missiles = [];
+        let missileSpawnTimer = 0;
+        let missileSpawnRate = 90; // 난이도 조절
+        
+        // 무기 시스템
+        let weapons = [];
+        let weaponSpawnTimer = 0;
+        let playerWeapon = null;
+        let bullets = [];
+        let bulletCooldown = 0;
+
+        // 우주선 시스템
+        let spaceships = [];
+        let spaceshipSpawnTimer = 0;
+        let lasers = [];
+
+        // 파티클 효과
+        let particles = [];
+
+        // 파워업 효과
+        let slowMotion = false;
+        let slowMotionTimer = 0;
+
+        // 입력 상태
+        const keys = {
+            w: false,
+            a: false,
+            s: false,
+            d: false,
+            ArrowUp: false,
+            ArrowDown: false,
+            ArrowLeft: false,
+            ArrowRight: false
+        };
+
+        let mousePos = { x: canvas.width / 2, y: canvas.height / 2 };
+
+        // 이벤트 리스너
+        window.addEventListener('keydown', (e) => {
+            const key = e.key.toLowerCase();
+            if (keys.hasOwnProperty(key)) keys[key] = true;
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+                keys[e.key] = true;
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            const key = e.key.toLowerCase();
+            if (keys.hasOwnProperty(key)) keys[key] = false;
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+                keys[e.key] = false;
+            }
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mousePos = {
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top
+            };
+        });
+
+        let isMouseDown = false;
+        let isMouseClick = false;
+        canvas.addEventListener('mousedown', (e) => {
+            isMouseDown = true;
+            isMouseClick = true;
+        });
+        canvas.addEventListener('mouseup', () => isMouseDown = false);
+
+        // 게임 시작
+        startBtn.addEventListener('click', startGame);
+        restartBtn.addEventListener('click', () => {
+            gameOverDiv.style.display = 'none';
+            resetGame();
+            startGame();
+        });
+
+        function startGame() {
+            gameState = 'playing';
+            instructionsDiv.style.display = 'none';
+            gameLoop();
+        }
+
+        function resetGame() {
+            survivalTime = 0;
+            missiles = [];
+            particles = [];
+            missileSpawnTimer = 0;
+            missileSpawnRate = 90;
+            slowMotion = false;
+            slowMotionTimer = 0;
+            player.x = canvas.width / 2;
+            player.y = canvas.height / 2;
+            weapons = [];
+            weaponSpawnTimer = 0;
+            playerWeapon = null;
+            bullets = [];
+            bulletCooldown = 0;
+            spaceships = [];
+            spaceshipSpawnTimer = 0;
+            lasers = [];
+        }
+        
+        function createWeapon() {
+            const weapon = {
+                x: Math.random() * (canvas.width - 100) + 50,
+                y: Math.random() * (canvas.height - 100) + 50,
+                radius: 20,
+                collected: false,
+                pulseTimer: 0
+            };
+            weapons.push(weapon);
+        }
+        
+        function createBullet(fromX, fromY, toX, toY) {
+            const dx = toX - fromX;
+            const dy = toY - fromY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            const bulletSpeed = 10;
+            
+            const bullet = {
+                x: fromX,
+                y: fromY,
+                radius: 5,
+                speed: bulletSpeed,
+                velocityX: (dx / distance) * bulletSpeed,
+                velocityY: (dy / distance) * bulletSpeed,
+                color: '#ffff00'
+            };
+            bullets.push(bullet);
+        }
+
+        function createSpaceship() {
+            const spaceship = {
+                x: Math.random() * (canvas.width - 100) + 50,
+                y: Math.random() * (canvas.height - 100) + 50,
+                radius: 30,
+                duration: 180, // 3초 동안 유지
+                fadeTimer: 0
+            };
+            spaceships.push(spaceship);
+            
+            // 사방으로 레이저 발사
+            createLasersFromSpaceship(spaceship.x, spaceship.y, spaceship.x, spaceship.y);
+        }
+        
+        function createLasersFromSpaceship(x, y, centerX, centerY) {
+            const laserCount = 8;
+            const isClockwise = Math.random() < 0.5; // 50% 확률로 시계/반시계
+            
+            for (let i = 0; i < laserCount; i++) {
+                const initialAngle = (i / laserCount) * Math.PI * 2;
+                const laser = {
+                    centerX: x,
+                    centerY: y,
+                    angle: initialAngle,
+                    rotationSpeed: isClockwise ? 0.01 : -0.01, // 시계/반시계 (느린 회전)
+                    length: 2000, // 레이저 길이
+                    life: 180, // 3초
+                    alpha: 1.0,
+                    spaceshipX: x,
+                    spaceshipY: y,
+                    rotationDelay: 60 // 1초 대기 후 회전 시작
+                };
+                lasers.push(laser);
+            }
+        }
+        
+        function createMissile() {
+            const side = Math.floor(Math.random() * 4);
+            const isHoming = Math.random() < 0.5; // 50% 확률로 유도탄
+            
+            let missile = {
+                x: 0,
+                y: 0,
+                radius: 10,
+                speed: 2 + survivalTime / 15, // 속도 증가율 2배
+                color: isHoming ? `hsl(${Math.random() * 60 + 180}, 100%, 60%)` : `hsl(${Math.random() * 60}, 100%, 60%)`,
+                trail: [],
+                type: isHoming ? 'homing' : 'straight',
+                angle: 0,
+                velocityX: 0,
+                velocityY: 0
+            };
+
+            // 사방 중 랜덤한 위치에서 생성
+            switch(side) {
+                case 0: // 위
+                    missile.x = Math.random() * canvas.width;
+                    missile.y = -20;
+                    if (!isHoming) missile.angle = Math.PI / 2; // 아래로 직진
+                    break;
+                case 1: // 오른쪽
+                    missile.x = canvas.width + 20;
+                    missile.y = Math.random() * canvas.height;
+                    if (!isHoming) missile.angle = Math.PI; // 왼쪽으로 직진
+                    break;
+                case 2: // 아래
+                    missile.x = Math.random() * canvas.width;
+                    missile.y = canvas.height + 20;
+                    if (!isHoming) missile.angle = -Math.PI / 2; // 위로 직진
+                    break;
+                case 3: // 왼쪽
+                    missile.x = -20;
+                    missile.y = Math.random() * canvas.height;
+                    if (!isHoming) missile.angle = 0; // 오른쪽으로 직진
+                    break;
+            }
+            
+            // 직선 미사일의 속도 벡터 설정
+            if (missile.type === 'straight') {
+                missile.velocityX = Math.cos(missile.angle) * missile.speed;
+                missile.velocityY = Math.sin(missile.angle) * missile.speed;
+            }
+
+            missiles.push(missile);
+        }
+
+        function createParticle(x, y, color) {
+            for (let i = 0; i < 15; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    velocityX: (Math.random() - 0.5) * 8,
+                    velocityY: (Math.random() - 0.5) * 8,
+                    life: 40,
+                    size: Math.random() * 6 + 2,
+                    color: color || `hsl(${Math.random() * 60}, 100%, 60%)`
+                });
+            }
+        }
+
+        function updatePlayer() {
+            let dx = 0, dy = 0;
+
+            // 키보드 입력
+            if ((keys.w || keys.ArrowUp) && player.y > 0) dy = -1;
+            if ((keys.s || keys.ArrowDown) && player.y < canvas.height) dy = 1;
+            if ((keys.a || keys.ArrowLeft) && player.x > 0) dx = -1;
+            if ((keys.d || keys.ArrowRight) && player.x < canvas.width) dx = 1;
+
+            // 마우스 입력
+            if (isMouseDown) {
+                const distX = mousePos.x - player.x;
+                const distY = mousePos.y - player.y;
+                const distance = Math.sqrt(distX * distX + distY * distY);
+                
+                if (distance > 5) {
+                    dx = distX / distance;
+                    dy = distY / distance;
+                }
+            }
+
+            // 이동
+            if (dx !== 0 || dy !== 0) {
+                const length = Math.sqrt(dx * dx + dy * dy);
+                player.x += (dx / length) * player.speed;
+                player.y += (dy / length) * player.speed;
+            }
+
+            // 경계 제한
+            player.x = Math.max(player.radius, Math.min(canvas.width - player.radius, player.x));
+            player.y = Math.max(player.radius, Math.min(canvas.height - player.radius, player.y));
+            
+            // 무기 발사 처리 (클릭 또는 자동)
+            if (playerWeapon && playerWeapon.ammo > 0) {
+                playerWeapon.cooldown--;
+                
+                // 마우스 클릭 또는 자동 발사 (쿨다운 초과 시)
+                if (playerWeapon.cooldown <= 0) {
+                    if (missiles.length > 0) {
+                        // 가장 가까운 미사일 찾기 (유도탄 우선)
+                        const homingMissiles = missiles.filter(m => m.type === 'homing');
+                        let closestMissile = null;
+                        let minDist = Infinity;
+                        const targetMissiles = homingMissiles.length > 0 ? homingMissiles : missiles;
+                        
+                        targetMissiles.forEach(missile => {
+                            const dist = Math.sqrt(
+                                Math.pow(player.x - missile.x, 2) + 
+                                Math.pow(player.y - missile.y, 2)
+                            );
+                            if (dist < minDist) {
+                                minDist = dist;
+                                closestMissile = missile;
+                            }
+                        });
+                        
+                        if (closestMissile && minDist < 300) { // 300픽셀 이내에만 발사
+                            createBullet(player.x, player.y, closestMissile.x, closestMissile.y);
+                            playerWeapon.ammo--;
+                            playerWeapon.cooldown = 15; // 발사 간격
+                            
+                            if (playerWeapon.ammo <= 0) {
+                                playerWeapon = null;
+                            }
+                        }
+                    }
+                }
+                
+                // 클릭 리셋
+                isMouseClick = false;
+            }
+        }
+
+        function updateMissiles() {
+            missileSpawnTimer++;
+            
+            // 시간에 따라 스폰 간격 점진적 감소
+            const baseRate = 90;
+            const minRate = 15;
+            const difficultyFactor = survivalTime / 10; // 10초마다 난이도 증가
+            const newSpawnRate = Math.max(minRate, baseRate - difficultyFactor * 8);
+            
+            missileSpawnRate = newSpawnRate;
+            const currentSpawnRate = slowMotion ? missileSpawnRate * 2 : missileSpawnRate;
+            
+            if (missileSpawnTimer > currentSpawnRate) {
+                createMissile();
+                missileSpawnTimer = 0;
+            }
+
+            for (let i = missiles.length - 1; i >= 0; i--) {
+                const missile = missiles[i];
+                const speedMultiplier = slowMotion ? 0.3 : 1;
+                
+                if (missile.type === 'homing') {
+                    // 유도탄: 플레이어를 향해 이동
+                    const dx = player.x - missile.x;
+                    const dy = player.y - missile.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    missile.velocityX = (dx / distance) * missile.speed * speedMultiplier;
+                    missile.velocityY = (dy / distance) * missile.speed * speedMultiplier;
+            } else {
+                    // 직선 미사일: 정해진 방향으로 직진
+                    missile.velocityX = Math.cos(missile.angle) * missile.speed * speedMultiplier;
+                    missile.velocityY = Math.sin(missile.angle) * missile.speed * speedMultiplier;
+                }
+                
+                missile.x += missile.velocityX;
+                missile.y += missile.velocityY;
+                
+                // 미사일 각도 업데이트 (화살표 표시용)
+                missile.angle = Math.atan2(missile.velocityY, missile.velocityX);
+                
+                // 미사일 궤적 추가
+                if (missile.trail.length < 25) {
+                    missile.trail.push({ x: missile.x, y: missile.y });
+                } else {
+                    missile.trail.shift();
+                    missile.trail.push({ x: missile.x, y: missile.y });
+                }
+                
+                // 충돌 체크
+                const dist = Math.sqrt(
+                    Math.pow(player.x - missile.x, 2) + 
+                    Math.pow(player.y - missile.y, 2)
+                );
+                
+                if (dist < player.radius + missile.radius) {
+                    gameOver();
+                    createParticle(player.x, player.y, missile.color);
+                    return;
+                }
+                
+                // 화면 밖으로 나가면 삭제
+                if (missile.x < -50 || missile.x > canvas.width + 50 ||
+                    missile.y < -50 || missile.y > canvas.height + 50) {
+                    missiles.splice(i, 1);
+                }
+            }
+
+            missileCountElement.textContent = missiles.length;
+        }
+
+        function updateWeapons() {
+            weaponSpawnTimer++;
+            
+            // 주기적으로 무기 생성 (약 10초마다)
+            if (weaponSpawnTimer > 600 && weapons.length === 0) {
+                createWeapon();
+                weaponSpawnTimer = 0;
+            }
+            
+            // 플레이어와 무기 충돌 체크
+            for (let i = weapons.length - 1; i >= 0; i--) {
+                const weapon = weapons[i];
+                weapon.pulseTimer += 0.1;
+                
+                if (!weapon.collected) {
+                    const dist = Math.sqrt(
+                        Math.pow(player.x - weapon.x, 2) + 
+                        Math.pow(player.y - weapon.y, 2)
+                    );
+                    
+                    if (dist < player.radius + weapon.radius) {
+                        weapon.collected = true;
+                        playerWeapon = {
+                            ammo: 10,
+                            cooldown: 0
+                        };
+                        weapons.splice(i, 1);
+                        createParticle(weapon.x, weapon.y, '#ffff00');
+                        
+                        // UI 표시
+                        document.getElementById('weaponStatus').style.display = 'block';
+                        setTimeout(() => {
+                            if (document.getElementById('weaponStatus')) {
+                                document.getElementById('weaponStatus').style.display = 'none';
+                            }
+                        }, 3000);
+                    }
+                }
+            }
+        }
+        
+        function updateBullets() {
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                const bullet = bullets[i];
+                
+                bullet.x += bullet.velocityX;
+                bullet.y += bullet.velocityY;
+                
+                // 미사일과 충돌 체크
+                for (let j = missiles.length - 1; j >= 0; j--) {
+                    const missile = missiles[j];
+                    const dist = Math.sqrt(
+                        Math.pow(bullet.x - missile.x, 2) + 
+                        Math.pow(bullet.y - missile.y, 2)
+                    );
+                    
+                    if (dist < bullet.radius + missile.radius) {
+                        // 총알로 미사일 파괴
+                        createParticle(missile.x, missile.y, missile.color);
+                        missiles.splice(j, 1);
+                        bullets.splice(i, 1);
+                        break;
+                    }
+                }
+                
+                // 화면 밖으로 나가면 삭제
+                if (bullet.x < -50 || bullet.x > canvas.width + 50 ||
+                    bullet.y < -50 || bullet.y > canvas.height + 50) {
+                    bullets.splice(i, 1);
+                }
+            }
+        }
+
+        function updateParticles() {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.velocityX;
+                p.y += p.velocityY;
+                p.life--;
+                
+                if (p.life <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+        }
+
+        function updatePowerups() {
+            // 랜덤으로 슬로우 모션 발동
+            if (survivalTime > 10 && Math.random() < 0.001 && !slowMotion) {
+                slowMotion = true;
+                slowMotionTimer = 0;
+                powerupIndicator.style.display = 'block';
+            }
+
+            if (slowMotion) {
+                slowMotionTimer++;
+                if (slowMotionTimer > 180) { // 3초간 유지
+                    slowMotion = false;
+                    powerupIndicator.style.display = 'none';
+                }
+            }
+        }
+        
+        function updateSpaceships() {
+            spaceshipSpawnTimer++;
+            
+            // 주기적으로 우주선 생성 (약 15초마다)
+            if (spaceshipSpawnTimer > 900 && spaceships.length === 0) {
+                createSpaceship();
+                spaceshipSpawnTimer = 0;
+            }
+            
+            // 우주선 업데이트 및 삭제
+            for (let i = spaceships.length - 1; i >= 0; i--) {
+                const spaceship = spaceships[i];
+                spaceship.duration--;
+                spaceship.fadeTimer += 0.05;
+                
+                if (spaceship.duration <= 0) {
+                    spaceships.splice(i, 1);
+                }
+            }
+        }
+        
+        function updateLasers() {
+            for (let i = lasers.length - 1; i >= 0; i--) {
+                const laser = lasers[i];
+                
+                // 회전 지연 처리
+                if (laser.rotationDelay > 0) {
+                    laser.rotationDelay--;
+                } else {
+                    // 레이저 회전 시작
+                    laser.angle += laser.rotationSpeed;
+                }
+                
+                // 레이저 끝점 계산
+                laser.startX = laser.centerX + Math.cos(laser.angle) * 20; // 시작점 약간 멀리
+                laser.startY = laser.centerY + Math.sin(laser.angle) * 20;
+                laser.endX = laser.startX + Math.cos(laser.angle) * laser.length;
+                laser.endY = laser.startY + Math.sin(laser.angle) * laser.length;
+                
+                laser.life--;
+                
+                // 레이저 페이드아웃
+                if (laser.life < 30) {
+                    laser.alpha = laser.life / 30;
+                }
+                
+                // 레이저 충돌 체크 (선형 충돌)
+                checkLaserCollision(laser);
+                
+                // 레이저 삭제
+                if (laser.life <= 0) {
+                    lasers.splice(i, 1);
+                }
+            }
+        }
+        
+        function checkLaserCollision(laser) {
+            // 플레이어 충돌 체크
+            const playerDistance = pointToLineDistance(
+                player.x, player.y,
+                laser.startX, laser.startY,
+                laser.endX, laser.endY
+            );
+            
+            if (playerDistance < player.radius + 5) {
+                    gameOver();
+                createParticle(player.x, player.y, '#ff0000');
+                    return;
+            }
+            
+            // 모든 미사일과 충돌 체크
+            for (let i = missiles.length - 1; i >= 0; i--) {
+                const missile = missiles[i];
+                const distance = pointToLineDistance(
+                    missile.x, missile.y,
+                    laser.startX, laser.startY,
+                    laser.endX, laser.endY
+                );
+                
+                if (distance < missile.radius + 5) {
+                    createParticle(missile.x, missile.y, missile.color);
+                    missiles.splice(i, 1);
+                }
+            }
+        }
+        
+        function pointToLineDistance(px, py, x1, y1, x2, y2) {
+            const A = px - x1;
+            const B = py - y1;
+            const C = x2 - x1;
+            const D = y2 - y1;
+
+            const dot = A * C + B * D;
+            const lenSq = C * C + D * D;
+            let param = -1;
+            if (lenSq !== 0) param = dot / lenSq;
+
+            let xx, yy;
+
+            if (param < 0) {
+                xx = x1;
+                yy = y1;
+            } else if (param > 1) {
+                xx = x2;
+                yy = y2;
+            } else {
+                xx = x1 + param * C;
+                yy = y1 + param * D;
+            }
+
+            const dx = px - xx;
+            const dy = py - yy;
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+
+        function gameOver() {
+            gameState = 'gameover';
+            
+            if (survivalTime > highScore) {
+                highScore = survivalTime;
+                localStorage.setItem('survivalHighScore', highScore);
+                highScoreElement.textContent = highScore;
+            }
+            
+            finalTimeElement.textContent = Math.floor(survivalTime);
+            gameOverDiv.style.display = 'block';
+            
+            // 폭발 효과
+            createParticle(player.x, player.y);
+        }
+
+        function drawBackground() {
+            // 우주 배경
+            const gradient = ctx.createRadialGradient(
+                canvas.width/2, canvas.height/2, 0,
+                canvas.width/2, canvas.height/2, canvas.width/2
+            );
+            gradient.addColorStop(0, '#1a1a2e');
+            gradient.addColorStop(1, '#0a0a1a');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 별 그리기
+            ctx.fillStyle = '#ffffff';
+            for (let i = 0; i < 50; i++) {
+                const x = (i * 137.5) % canvas.width;
+                const y = (i * 237.7) % canvas.height;
+                ctx.fillRect(x, y, 1, 1);
+            }
+        }
+
+        function drawPlayer() {
+            // 플레이어 그림자
+            ctx.save();
+            ctx.globalAlpha = 0.3;
+            ctx.fillStyle = player.color;
+            ctx.beginPath();
+            ctx.arc(player.x, player.y + 5, player.radius * 1.2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+            
+            // 플레이어 본체
+            const gradient = ctx.createRadialGradient(
+                player.x - 5, player.y - 5, 0,
+                player.x, player.y, player.radius
+            );
+            gradient.addColorStop(0, '#ffffff');
+            gradient.addColorStop(1, player.color);
+            
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // 플레이어 테두리
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
+        function drawMissiles() {
+            missiles.forEach(missile => {
+                // 궤적 그리기
+                if (missile.trail.length > 1) {
+                    ctx.strokeStyle = missile.color;
+                    ctx.lineWidth = 2;
+                    ctx.globalAlpha = 0.4;
+                    ctx.beginPath();
+                    ctx.moveTo(missile.trail[0].x, missile.trail[0].y);
+                    for (let i = 1; i < missile.trail.length; i++) {
+                        ctx.lineTo(missile.trail[i].x, missile.trail[i].y);
+                    }
+                    ctx.stroke();
+                    ctx.globalAlpha = 1;
+                }
+                
+                // 미사일 본체 그리기 (화살표 모양)
+            ctx.save();
+                ctx.translate(missile.x, missile.y);
+                ctx.rotate(missile.angle);
+                
+                // 미사일 본체 (삼각형)
+                const size = missile.radius;
+                const tip = size * 1.5; // 앞부분이 더 긴 화살표
+                
+                ctx.fillStyle = missile.color;
+            ctx.beginPath();
+                ctx.moveTo(tip, 0);
+                ctx.lineTo(-size * 0.8, -size * 0.8);
+                ctx.lineTo(-size * 0.8, size * 0.8);
+                ctx.closePath();
+            ctx.fill();
+            
+                // 미사일 그라디언트 효과
+                const gradient = ctx.createLinearGradient(0, 0, tip, 0);
+                gradient.addColorStop(0, 'rgba(255, 255, 255, 0.8)');
+                gradient.addColorStop(1, missile.color);
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.moveTo(tip, 0);
+                ctx.lineTo(-size * 0.8, -size * 0.8);
+                ctx.lineTo(-size * 0.8, size * 0.8);
+                ctx.closePath();
+                ctx.fill();
+                
+                // 미사일 테두리
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(tip, 0);
+                ctx.lineTo(-size * 0.8, -size * 0.8);
+                ctx.lineTo(-size * 0.8, size * 0.8);
+                ctx.closePath();
+                ctx.stroke();
+            
+            ctx.restore();
+            });
+        }
+
+        function drawWeapons() {
+            weapons.forEach(weapon => {
+                if (!weapon.collected) {
+                    // 무기 그라디언트
+                    const gradient = ctx.createRadialGradient(
+                        weapon.x, weapon.y, 0,
+                        weapon.x, weapon.y, weapon.radius
+                    );
+                    gradient.addColorStop(0, '#ffffff');
+                    gradient.addColorStop(1, '#ffff00');
+                    
+                    ctx.save();
+                    
+                    // 펄스 효과
+                    const pulseRadius = weapon.radius + Math.sin(weapon.pulseTimer) * 5;
+                    
+                    ctx.fillStyle = gradient;
+            ctx.beginPath();
+                    ctx.arc(weapon.x, weapon.y, pulseRadius, 0, Math.PI * 2);
+            ctx.fill();
+            
+                    ctx.strokeStyle = '#ff0000';
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.arc(weapon.x, weapon.y, pulseRadius, 0, Math.PI * 2);
+                    ctx.stroke();
+                    
+                    // 무기 아이콘 (X 모양)
+                    ctx.strokeStyle = '#000000';
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.moveTo(weapon.x - 8, weapon.y);
+                    ctx.lineTo(weapon.x + 8, weapon.y);
+                    ctx.moveTo(weapon.x, weapon.y - 8);
+                    ctx.lineTo(weapon.x, weapon.y + 8);
+                    ctx.stroke();
+            
+            ctx.restore();
+                }
+            });
+        }
+
+        function drawBullets() {
+            bullets.forEach(bullet => {
+                ctx.fillStyle = bullet.color;
+                ctx.beginPath();
+                ctx.arc(bullet.x, bullet.y, bullet.radius, 0, Math.PI * 2);
+                ctx.fill();
+                
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(bullet.x, bullet.y, bullet.radius * 0.5, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        }
+        
+        function drawSpaceships() {
+            spaceships.forEach(spaceship => {
+                ctx.save();
+                
+                // 페이드아웃 효과
+                const alpha = Math.max(0, 1 - spaceship.fadeTimer);
+                ctx.globalAlpha = alpha;
+                
+                // 우주선 그리기 (삼각형 모양)
+                const size = spaceship.radius;
+                ctx.fillStyle = '#ff0080';
+                ctx.beginPath();
+                ctx.moveTo(spaceship.x, spaceship.y - size);
+                ctx.lineTo(spaceship.x - size * 0.8, spaceship.y + size * 0.6);
+                ctx.lineTo(spaceship.x + size * 0.8, spaceship.y + size * 0.6);
+                ctx.closePath();
+                ctx.fill();
+                
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+                
+                ctx.restore();
+            });
+        }
+        
+        function drawLasers() {
+            lasers.forEach(laser => {
+                ctx.save();
+                ctx.globalAlpha = laser.alpha;
+                
+                // 레이저 그라디언트
+                const gradient = ctx.createLinearGradient(
+                    laser.startX, laser.startY,
+                    laser.endX, laser.endY
+                );
+                gradient.addColorStop(0, 'rgba(255, 0, 200, 0)');
+                gradient.addColorStop(0.5, 'rgba(255, 0, 200, 0.8)');
+                gradient.addColorStop(1, 'rgba(255, 0, 200, 0)');
+                
+                ctx.strokeStyle = gradient;
+                ctx.lineWidth = 8;
+                ctx.beginPath();
+                ctx.moveTo(laser.startX, laser.startY);
+                ctx.lineTo(laser.endX, laser.endY);
+                ctx.stroke();
+                
+                // 레이저 글로우 효과
+                ctx.lineWidth = 20;
+                ctx.globalAlpha = laser.alpha * 0.3;
+                ctx.stroke();
+                
+                ctx.restore();
+            });
+        }
+        
+        function drawParticles() {
+            particles.forEach(p => {
+                ctx.save();
+                ctx.globalAlpha = p.life / 40;
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            });
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            drawBackground();
+            drawWeapons();
+            drawBullets();
+            drawSpaceships();
+            drawLasers();
+            drawMissiles();
+            drawParticles();
+            drawPlayer();
+            
+            // 무기 상태 표시
+            if (playerWeapon) {
+                ctx.save();
+                ctx.fillStyle = '#ffff00';
+                ctx.font = 'bold 20px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(`탄약: ${playerWeapon.ammo}`, canvas.width / 2, canvas.height - 20);
+                ctx.restore();
+            }
+        }
+
+        function update() {
+            if (gameState !== 'playing') return;
+            
+            updatePlayer();
+            updateMissiles();
+            updateWeapons();
+            updateBullets();
+            updateSpaceships();
+            updateLasers();
+            updateParticles();
+            updatePowerups();
+            
+            survivalTime += 0.016; // 60fps 기준
+            survivalTimeElement.textContent = Math.floor(survivalTime);
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            
+            if (gameState === 'playing') {
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        // 창 크기 조정
+        window.addEventListener('resize', () => {
+            const newSize = Math.min(window.innerWidth - 100, window.innerHeight - 200, 800);
+            canvas.width = newSize;
+            canvas.height = newSize;
+            
+            if (gameState === 'menu') {
+                player.x = canvas.width / 2;
+                player.y = canvas.height / 2;
+            }
+        });
+    </script>
+</body>
+</html>
