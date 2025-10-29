@@ -401,7 +401,8 @@
                     alpha: 1.0,
                     spaceshipX: x,
                     spaceshipY: y,
-                    rotationDelay: 60 // 1초 대기 후 회전 시작
+                    rotationDelay: 60, // 1초 대기 후 회전 시작
+                    warningPhase: 30 // 0.5초 경고 단계
                 };
                 lasers.push(laser);
             }
@@ -743,6 +744,15 @@
             for (let i = lasers.length - 1; i >= 0; i--) {
                 const laser = lasers[i];
                 
+                // 경고 단계 처리
+                if (laser.warningPhase > 0) {
+                    laser.warningPhase--;
+                    // 경고 단계에서는 충돌 체크 안 함
+                } else {
+                    // 실제 레이저 활성화 - 충돌 체크 함
+                    checkLaserCollision(laser);
+                }
+                
                 // 회전 지연 처리
                 if (laser.rotationDelay > 0) {
                     laser.rotationDelay--;
@@ -763,9 +773,6 @@
                 if (laser.life < 30) {
                     laser.alpha = laser.life / 30;
                 }
-                
-                // 레이저 충돌 체크 (선형 충돌)
-                checkLaserCollision(laser);
                 
                 // 레이저 삭제
                 if (laser.life <= 0) {
@@ -970,8 +977,8 @@
                     gradient.addColorStop(0, '#ffffff');
                     gradient.addColorStop(1, '#ffff00');
                     
-                    ctx.save();
-                    
+            ctx.save();
+            
                     // 펄스 효과
                     const pulseRadius = weapon.radius + Math.sin(weapon.pulseTimer) * 5;
                     
@@ -1004,10 +1011,10 @@
         function drawBullets() {
             bullets.forEach(bullet => {
                 ctx.fillStyle = bullet.color;
-                ctx.beginPath();
+            ctx.beginPath();
                 ctx.arc(bullet.x, bullet.y, bullet.radius, 0, Math.PI * 2);
-                ctx.fill();
-                
+            ctx.fill();
+            
                 ctx.fillStyle = '#ffffff';
                 ctx.beginPath();
                 ctx.arc(bullet.x, bullet.y, bullet.radius * 0.5, 0, Math.PI * 2);
@@ -1036,35 +1043,47 @@
                 ctx.strokeStyle = '#ffffff';
                 ctx.lineWidth = 3;
                 ctx.stroke();
-                
-                ctx.restore();
+            
+            ctx.restore();
             });
         }
         
         function drawLasers() {
             lasers.forEach(laser => {
                 ctx.save();
-                ctx.globalAlpha = laser.alpha;
                 
-                // 레이저 그라디언트
+                // 경고 단계인지 확인
+                const isWarning = laser.warningPhase > 0;
+                ctx.globalAlpha = laser.alpha * (isWarning ? 0.5 : 1); // 경고 단계는 반투명
+                
+                // 레이저 그라디언트 (경고: 노란색, 실제: 빨간색)
                 const gradient = ctx.createLinearGradient(
                     laser.startX, laser.startY,
                     laser.endX, laser.endY
                 );
-                gradient.addColorStop(0, 'rgba(255, 0, 200, 0)');
-                gradient.addColorStop(0.5, 'rgba(255, 0, 200, 0.8)');
-                gradient.addColorStop(1, 'rgba(255, 0, 200, 0)');
+                
+                if (isWarning) {
+                    // 경고 단계: 노란색
+                    gradient.addColorStop(0, 'rgba(255, 255, 0, 0)');
+                    gradient.addColorStop(0.5, 'rgba(255, 255, 0, 0.6)');
+                    gradient.addColorStop(1, 'rgba(255, 255, 0, 0)');
+                } else {
+                    // 실제 레이저: 빨간색
+                    gradient.addColorStop(0, 'rgba(255, 0, 0, 0)');
+                    gradient.addColorStop(0.5, 'rgba(255, 0, 0, 0.8)');
+                    gradient.addColorStop(1, 'rgba(255, 0, 0, 0)');
+                }
                 
                 ctx.strokeStyle = gradient;
-                ctx.lineWidth = 8;
+                ctx.lineWidth = isWarning ? 5 : 8;
                 ctx.beginPath();
                 ctx.moveTo(laser.startX, laser.startY);
                 ctx.lineTo(laser.endX, laser.endY);
                 ctx.stroke();
                 
                 // 레이저 글로우 효과
-                ctx.lineWidth = 20;
-                ctx.globalAlpha = laser.alpha * 0.3;
+                ctx.lineWidth = isWarning ? 15 : 20;
+                ctx.globalAlpha = (isWarning ? 0.2 : 0.3) * laser.alpha;
                 ctx.stroke();
                 
                 ctx.restore();
