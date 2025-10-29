@@ -153,6 +153,13 @@
             border: 2px solid #ffff00;
             display: none;
         }
+        
+        #slowMotionGaugeContainer {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 10;
+        }
     </style>
 </head>
 <body>
@@ -166,6 +173,7 @@
                 🔴 유도탄: 플레이어를 추적<br>
                 🟢 직선탄: 정면으로 직진
             </div>
+            <div style="margin-top: 15px;">🏃 속도: <span id="playerSpeed">5</span></div>
         </div>
 
         <div class="powerup-indicator" id="powerupIndicator">
@@ -174,6 +182,14 @@
         
         <div id="weaponStatus">
             🚀 무기 획득! 유도탄 자동 격추 중...
+        </div>
+        
+        <div id="slowMotionGaugeContainer">
+            <div style="color: white; font-weight: bold; margin-bottom: 5px;">슬로우:</div>
+            <div style="width: 300px; height: 15px; background: rgba(0,0,0,0.7); border: 2px solid white; border-radius: 5px; overflow: hidden;">
+                <div id="slowMotionGaugeBar" style="height: 100%; width: 0%; background: #00ffff; transition: width 0.1s;"></div>
+            </div>
+            <div id="slowMotionGaugeText" style="color: yellow; font-weight: bold; margin-top: 3px; font-size: 12px;"></div>
         </div>
         
         <div id="instructions">
@@ -188,9 +204,11 @@
                 <p>🔫 무기를 획득하면 미사일을 자동 격추합니다!</p>
                 <p>🚀 <span style="color: #ff0080;">우주선</span>이 나타나면 사방으로 레이저를 발사합니다!</p>
                 <p style="color: #ff4444; font-size: 14px;">⚠️ 레이저에 닿으면 즉시 사망합니다!</p>
+                <p>🏃 <span style="color: #00ff00;">속도 증가</span> 아이템은 영구히 이동속도를 증가시킵니다!</p>
                 <p style="margin-top: 15px;"><strong>조작 방법:</strong></p>
                 <p>⌨️ WASD 또는 방향키로 이동</p>
                 <p>🖱️ 마우스로 이동 (마우스 버튼 꾹 누르기)</p>
+                <p>⏸️ <span style="color: #ff00ff;">스페이스바</span>로 슬로우 모션 발동</p>
             </div>
             <button id="startBtn">게임 시작</button>
         </div>
@@ -210,7 +228,10 @@
         const survivalTimeElement = document.getElementById('survivalTime');
         const highScoreElement = document.getElementById('highScore');
         const missileCountElement = document.getElementById('missileCount');
+        const playerSpeedElement = document.getElementById('playerSpeed');
         const powerupIndicator = document.getElementById('powerupIndicator');
+        const slowMotionGaugeBar = document.getElementById('slowMotionGaugeBar');
+        const slowMotionGaugeText = document.getElementById('slowMotionGaugeText');
         const startBtn = document.getElementById('startBtn');
         const restartBtn = document.getElementById('restartBtn');
         const instructionsDiv = document.getElementById('instructions');
@@ -233,7 +254,8 @@
             x: canvas.width / 2,
             y: canvas.height / 2,
             radius: 15,
-            speed: 5,
+            baseSpeed: 5, // 기본 속도
+            speed: 5, // 현재 속도
             color: '#00ffff'
         };
 
@@ -248,6 +270,11 @@
         let playerWeapon = null;
         let bullets = [];
         let bulletCooldown = 0;
+        
+        // 속도 증가 아이템 시스템
+        let speedBoosts = [];
+        let speedBoostSpawnTimer = 0;
+        let playerSpeedBoostCount = 0;
 
         // 우주선 시스템
         let spaceships = [];
@@ -257,9 +284,12 @@
         // 파티클 효과
         let particles = [];
 
-        // 파워업 효과
+        // 슬로우 모션 시스템
         let slowMotion = false;
         let slowMotionTimer = 0;
+        let slowMotionGauge = 0; // 게이지 (0~100)
+        let maxSlowMotionGauge = 100;
+        let slowMotionGaugeCooldown = 0;
 
         // 입력 상태
         const keys = {
@@ -270,7 +300,8 @@
             ArrowUp: false,
             ArrowDown: false,
             ArrowLeft: false,
-            ArrowRight: false
+            ArrowRight: false,
+            ' ': false // 스페이스키
         };
 
         let mousePos = { x: canvas.width / 2, y: canvas.height / 2 };
@@ -330,13 +361,19 @@
             missileSpawnRate = 90;
             slowMotion = false;
             slowMotionTimer = 0;
+            slowMotionGauge = 0;
+            slowMotionGaugeCooldown = 0;
             player.x = canvas.width / 2;
             player.y = canvas.height / 2;
+            player.speed = 5;
             weapons = [];
             weaponSpawnTimer = 0;
             playerWeapon = null;
             bullets = [];
             bulletCooldown = 0;
+            speedBoosts = [];
+            speedBoostSpawnTimer = 0;
+            playerSpeedBoostCount = 0;
             spaceships = [];
             spaceshipSpawnTimer = 0;
             lasers = [];
@@ -371,6 +408,16 @@
             bullets.push(bullet);
         }
 
+        function createSpeedBoost() {
+            const speedBoost = {
+                x: Math.random() * (canvas.width - 100) + 50,
+                y: Math.random() * (canvas.height - 100) + 50,
+                radius: 15,
+                pulseTimer: 0
+            };
+            speedBoosts.push(speedBoost);
+        }
+
         function createSpaceship() {
             const spaceship = {
                 x: Math.random() * (canvas.width - 100) + 50,
@@ -402,7 +449,7 @@
                     spaceshipX: x,
                     spaceshipY: y,
                     rotationDelay: 60, // 1초 대기 후 회전 시작
-                    warningPhase: 30 // 0.5초 경고 단계
+                    warningPhase: 90 // 1.5초 경고 단계
                 };
                 lasers.push(laser);
             }
@@ -410,19 +457,24 @@
         
         function createMissile() {
             const side = Math.floor(Math.random() * 4);
-            const isHoming = Math.random() < 0.5; // 50% 확률로 유도탄
+            // 타입 확률: 유도탄 40%, 직선탄 40%, 도탄탄 20%
+            const r = Math.random();
+            const type = r < 0.4 ? 'homing' : (r < 0.8 ? 'straight' : 'ricochet');
             
             let missile = {
                 x: 0,
                 y: 0,
                 radius: 10,
-                speed: 2 + survivalTime / 15, // 속도 증가율 2배
-                color: isHoming ? `hsl(${Math.random() * 60 + 180}, 100%, 60%)` : `hsl(${Math.random() * 60}, 100%, 60%)`,
+                speed: type === 'ricochet' ? 3 + survivalTime / 20 : 2 + survivalTime / 15,
+                color: type === 'homing'
+                    ? `hsl(${Math.random() * 60 + 180}, 100%, 60%)`
+                    : (type === 'ricochet' ? `hsl(${Math.random() * 60 + 300}, 100%, 60%)` : `hsl(${Math.random() * 60}, 100%, 60%)`),
                 trail: [],
-                type: isHoming ? 'homing' : 'straight',
+                type,
                 angle: 0,
                 velocityX: 0,
-                velocityY: 0
+                velocityY: 0,
+                bounceCount: 0 // 도탄 횟수
             };
 
             // 사방 중 랜덤한 위치에서 생성
@@ -430,29 +482,45 @@
                 case 0: // 위
                     missile.x = Math.random() * canvas.width;
                     missile.y = -20;
-                    if (!isHoming) missile.angle = Math.PI / 2; // 아래로 직진
+                    if (type === 'straight') missile.angle = Math.PI / 2; // 아래로 직진
                     break;
                 case 1: // 오른쪽
                     missile.x = canvas.width + 20;
                     missile.y = Math.random() * canvas.height;
-                    if (!isHoming) missile.angle = Math.PI; // 왼쪽으로 직진
+                    if (type === 'straight') missile.angle = Math.PI; // 왼쪽으로 직진
                     break;
                 case 2: // 아래
                     missile.x = Math.random() * canvas.width;
                     missile.y = canvas.height + 20;
-                    if (!isHoming) missile.angle = -Math.PI / 2; // 위로 직진
+                    if (type === 'straight') missile.angle = -Math.PI / 2; // 위로 직진
                     break;
                 case 3: // 왼쪽
                     missile.x = -20;
                     missile.y = Math.random() * canvas.height;
-                    if (!isHoming) missile.angle = 0; // 오른쪽으로 직진
+                    if (type === 'straight') missile.angle = 0; // 오른쪽으로 직진
                     break;
             }
             
-            // 직선 미사일의 속도 벡터 설정
+            // 직선/도탄 미사일의 속도 벡터 설정
             if (missile.type === 'straight') {
                 missile.velocityX = Math.cos(missile.angle) * missile.speed;
                 missile.velocityY = Math.sin(missile.angle) * missile.speed;
+            } else if (missile.type === 'ricochet') {
+                // 도탄탄: 초기 각도는 플레이어를 대략 향하거나 랜덤
+                const aimPlayer = Math.random() < 0.5;
+                if (aimPlayer) {
+                    const dx = player.x - missile.x;
+                    const dy = player.y - missile.y;
+                    const ang = Math.atan2(dy, dx);
+                    missile.velocityX = Math.cos(ang) * missile.speed;
+                    missile.velocityY = Math.sin(ang) * missile.speed;
+                    missile.angle = ang;
+                } else {
+                    const ang = Math.random() * Math.PI * 2;
+                    missile.velocityX = Math.cos(ang) * missile.speed;
+                    missile.velocityY = Math.sin(ang) * missile.speed;
+                    missile.angle = ang;
+                }
             }
 
             missiles.push(missile);
@@ -504,6 +572,13 @@
             player.x = Math.max(player.radius, Math.min(canvas.width - player.radius, player.x));
             player.y = Math.max(player.radius, Math.min(canvas.height - player.radius, player.y));
             
+            // 슬로우 모션 발동 처리 (스페이스키)
+            if (keys[' '] && slowMotionGauge >= 100 && !slowMotion && slowMotionGaugeCooldown <= 0) {
+                slowMotion = true;
+                slowMotionTimer = 0;
+                slowMotionGauge = 0;
+            }
+            
             // 무기 발사 처리 (클릭 또는 자동)
             if (playerWeapon && playerWeapon.ammo > 0) {
                 playerWeapon.cooldown--;
@@ -545,6 +620,11 @@
             }
         }
 
+        function reflectVelocity(vx, vy, nx, ny) {
+            const dot = vx * nx + vy * ny;
+            return { rx: vx - 2 * dot * nx, ry: vy - 2 * dot * ny };
+        }
+
         function updateMissiles() {
             missileSpawnTimer++;
             
@@ -574,10 +654,15 @@
                     
                     missile.velocityX = (dx / distance) * missile.speed * speedMultiplier;
                     missile.velocityY = (dy / distance) * missile.speed * speedMultiplier;
-            } else {
+                } else if (missile.type === 'straight') {
                     // 직선 미사일: 정해진 방향으로 직진
                     missile.velocityX = Math.cos(missile.angle) * missile.speed * speedMultiplier;
                     missile.velocityY = Math.sin(missile.angle) * missile.speed * speedMultiplier;
+                } else if (missile.type === 'ricochet') {
+                    // 도탄 미사일: 현재 벡터 유지, 속도 크기만 유지
+                    const mag = Math.max(0.0001, Math.hypot(missile.velocityX, missile.velocityY));
+                    missile.velocityX = (missile.velocityX / mag) * missile.speed * speedMultiplier;
+                    missile.velocityY = (missile.velocityY / mag) * missile.speed * speedMultiplier;
                 }
                 
                 missile.x += missile.velocityX;
@@ -585,11 +670,40 @@
                 
                 // 미사일 각도 업데이트 (화살표 표시용)
                 missile.angle = Math.atan2(missile.velocityY, missile.velocityX);
+
+                // 도탄 미사일: 벽 반사 처리
+                if (missile.type === 'ricochet') {
+                    let bounced = false;
+                    if (missile.x <= missile.radius) {
+                        const r = reflectVelocity(missile.velocityX, missile.velocityY, 1, 0);
+                        missile.velocityX = r.rx; missile.velocityY = r.ry; missile.x = missile.radius;
+                        bounced = true;
+                    } else if (missile.x >= canvas.width - missile.radius) {
+                        const r = reflectVelocity(missile.velocityX, missile.velocityY, -1, 0);
+                        missile.velocityX = r.rx; missile.velocityY = r.ry; missile.x = canvas.width - missile.radius;
+                        bounced = true;
+                    }
+                    if (missile.y <= missile.radius) {
+                        const r = reflectVelocity(missile.velocityX, missile.velocityY, 0, 1);
+                        missile.velocityX = r.rx; missile.velocityY = r.ry; missile.y = missile.radius;
+                        bounced = true;
+                    } else if (missile.y >= canvas.height - missile.radius) {
+                        const r = reflectVelocity(missile.velocityX, missile.velocityY, 0, -1);
+                        missile.velocityX = r.rx; missile.velocityY = r.ry; missile.y = canvas.height - missile.radius;
+                        bounced = true;
+                    }
+                    
+                    // 도탄 시 속도 증가
+                    if (bounced) {
+                        missile.bounceCount++;
+                        missile.speed += 0.5; // 도탄할 때마다 속도 0.5 증가
+                    }
+                }
                 
                 // 미사일 궤적 추가
                 if (missile.trail.length < 25) {
                     missile.trail.push({ x: missile.x, y: missile.y });
-                } else {
+            } else {
                     missile.trail.shift();
                     missile.trail.push({ x: missile.x, y: missile.y });
                 }
@@ -610,6 +724,33 @@
                 if (missile.x < -50 || missile.x > canvas.width + 50 ||
                     missile.y < -50 || missile.y > canvas.height + 50) {
                     missiles.splice(i, 1);
+                }
+            }
+
+            // 도탄 미사일과 다른 미사일 간 반사 처리
+            for (let i = 0; i < missiles.length; i++) {
+                const m1 = missiles[i];
+                if (m1.type !== 'ricochet') continue;
+                for (let j = i + 1; j < missiles.length; j++) {
+                    const m2 = missiles[j];
+                    const dx = m2.x - m1.x;
+                    const dy = m2.y - m1.y;
+                    const dist = Math.hypot(dx, dy);
+                    const minDist = m1.radius + m2.radius;
+                    if (dist > 0 && dist < minDist) {
+                        const nx = dx / dist;
+                        const ny = dy / dist;
+                        const r1 = reflectVelocity(m1.velocityX, m1.velocityY, nx, ny);
+                        m1.velocityX = r1.rx; m1.velocityY = r1.ry;
+                        // 겹침 해소
+                        const overlap = (minDist - dist) / 2;
+                        m1.x -= nx * overlap; m1.y -= ny * overlap;
+                        m2.x += nx * overlap; m2.y += ny * overlap;
+                        
+                        // 도탄 탄 속도 증가
+                        m1.bounceCount++;
+                        m1.speed += 0.5;
+                    }
                 }
             }
 
@@ -653,6 +794,38 @@
                             }
                         }, 3000);
                     }
+                }
+            }
+        }
+        
+        function updateSpeedBoosts() {
+            speedBoostSpawnTimer++;
+            
+            // 주기적으로 속도 증가 아이템 생성 (약 20초마다)
+            if (speedBoostSpawnTimer > 1200 && speedBoosts.length === 0) {
+                createSpeedBoost();
+                speedBoostSpawnTimer = 0;
+            }
+            
+            // 플레이어와 속도 증가 아이템 충돌 체크
+            for (let i = speedBoosts.length - 1; i >= 0; i--) {
+                const boost = speedBoosts[i];
+                boost.pulseTimer += 0.1;
+                
+                const dist = Math.sqrt(
+                    Math.pow(player.x - boost.x, 2) + 
+                    Math.pow(player.y - boost.y, 2)
+                );
+                
+                if (dist < player.radius + boost.radius) {
+                    // 속도 증가 (영구적)
+                    player.speed += 0.5;
+                    playerSpeedBoostCount++;
+                    createParticle(boost.x, boost.y, '#00ff00');
+                    speedBoosts.splice(i, 1);
+                    
+                    // UI 업데이트
+                    playerSpeedElement.textContent = player.speed.toFixed(1);
                 }
             }
         }
@@ -703,18 +876,26 @@
         }
 
         function updatePowerups() {
-            // 랜덤으로 슬로우 모션 발동
-            if (survivalTime > 10 && Math.random() < 0.001 && !slowMotion) {
-                slowMotion = true;
-                slowMotionTimer = 0;
-                powerupIndicator.style.display = 'block';
-            }
-
+            // 슬로우 모션 활성화 중 처리
             if (slowMotion) {
                 slowMotionTimer++;
                 if (slowMotionTimer > 180) { // 3초간 유지
                     slowMotion = false;
                     powerupIndicator.style.display = 'none';
+                    slowMotionGaugeCooldown = 300; // 5초 쿨타임
+                }
+            }
+            
+            // 쿨타임 처리
+            if (slowMotionGaugeCooldown > 0) {
+                slowMotionGaugeCooldown--;
+            } else {
+                // 게이지 서서히 충전 (슬로우 모션 비활성화 중일 때만)
+                if (!slowMotion && slowMotionGauge < maxSlowMotionGauge) {
+                    slowMotionGauge += 0.2; // 서서히 증가
+                    if (slowMotionGauge > maxSlowMotionGauge) {
+                        slowMotionGauge = maxSlowMotionGauge;
+                    }
                 }
             }
         }
@@ -757,8 +938,9 @@
                 if (laser.rotationDelay > 0) {
                     laser.rotationDelay--;
                 } else {
-                    // 레이저 회전 시작
-                    laser.angle += laser.rotationSpeed;
+                    // 레이저 회전 시작 (슬로우 모션 영향)
+                    const speedMultiplier = slowMotion ? 0.3 : 1;
+                    laser.angle += laser.rotationSpeed * speedMultiplier;
                 }
                 
                 // 레이저 끝점 계산
@@ -854,6 +1036,11 @@
             
             // 폭발 효과
             createParticle(player.x, player.y);
+            
+            // UI 속도 표시 초기화
+            if (playerSpeedElement) {
+                playerSpeedElement.textContent = '5';
+            }
         }
 
         function drawBackground() {
@@ -1007,7 +1194,46 @@
                 }
             });
         }
-
+        
+        function drawSpeedBoosts() {
+            speedBoosts.forEach(boost => {
+                // 속도 증가 아이템 그라디언트
+                const gradient = ctx.createRadialGradient(
+                    boost.x, boost.y, 0,
+                    boost.x, boost.y, boost.radius
+                );
+                gradient.addColorStop(0, '#ffffff');
+                gradient.addColorStop(1, '#00ff00');
+                
+                ctx.save();
+                
+                // 펄스 효과
+                const pulseRadius = boost.radius + Math.sin(boost.pulseTimer) * 5;
+                
+                ctx.fillStyle = gradient;
+            ctx.beginPath();
+                ctx.arc(boost.x, boost.y, pulseRadius, 0, Math.PI * 2);
+            ctx.fill();
+            
+                ctx.strokeStyle = '#00cc00';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(boost.x, boost.y, pulseRadius, 0, Math.PI * 2);
+                ctx.stroke();
+                
+                // 속도 아이콘 (↑ 화살표)
+                ctx.fillStyle = '#000000';
+                ctx.beginPath();
+                ctx.moveTo(boost.x, boost.y - pulseRadius * 0.8);
+                ctx.lineTo(boost.x - pulseRadius * 0.5, boost.y);
+                ctx.lineTo(boost.x + pulseRadius * 0.5, boost.y);
+                ctx.closePath();
+                ctx.fill();
+            
+            ctx.restore();
+            });
+        }
+        
         function drawBullets() {
             bullets.forEach(bullet => {
                 ctx.fillStyle = bullet.color;
@@ -1107,6 +1333,7 @@
             
             drawBackground();
             drawWeapons();
+            drawSpeedBoosts();
             drawBullets();
             drawSpaceships();
             drawLasers();
@@ -1123,6 +1350,22 @@
                 ctx.fillText(`탄약: ${playerWeapon.ammo}`, canvas.width / 2, canvas.height - 20);
                 ctx.restore();
             }
+            
+            // 슬로우 모션 게이지 업데이트 (HTML로 표시)
+            const gaugePercent = slowMotionGauge / maxSlowMotionGauge;
+            slowMotionGaugeBar.style.width = `${gaugePercent * 100}%`;
+            
+            if (gaugePercent >= 1) {
+                slowMotionGaugeBar.style.background = '#ff00ff';
+            } else {
+                slowMotionGaugeBar.style.background = '#00ffff';
+            }
+            
+            if (gaugePercent >= 1 && !slowMotion && slowMotionGaugeCooldown <= 0) {
+                slowMotionGaugeText.textContent = '[스페이스바]';
+            } else {
+                slowMotionGaugeText.textContent = '';
+            }
         }
 
         function update() {
@@ -1131,6 +1374,7 @@
             updatePlayer();
             updateMissiles();
             updateWeapons();
+            updateSpeedBoosts();
             updateBullets();
             updateSpaceships();
             updateLasers();
